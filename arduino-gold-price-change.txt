@@ -1,0 +1,160 @@
+
+#include <Arduino.h>
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+#include <WiFiClientSecureBearSSL.h>
+#include <Wire.h>
+#include <ArduinoJson.h> 
+
+#define WIFI_SSID "Mahmut"
+#define WIFI_PASS "Batu1400Emir1148"
+
+#define SETUP_TIME 4
+
+#define UPDATE_TIME 5
+
+#define CURRENCY_CODE "usd"
+
+#define CURRENCY_SYM '$'
+
+
+const uint8_t fingerprint_crypto[20] = {0x01, 0xE7, 0x11, 0x12, 0x8C, 0x48, 0x3E, 0xF2, 0xC6, 0x68, 0x55,
+0x3D, 0x57, 0x8C, 0xC1, 0xE6, 0x40, 0x48, 0x2C, 0x10};
+
+struct asset {
+  String assetName;
+  String url;
+  const unsigned char logo [288];
+};
+
+asset assets[] = {
+ 
+  { "Gold",
+    "https://api.genelpara.com/embed/altin.json",
+    { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x80, 0x00,
+      0x00, 0x00, 0x00, 0x01, 0x40, 0x00, 0x07, 0x00, 0x00, 0x01, 0xa0, 0x00, 0x0f, 0x00, 0x00, 0x01,
+      0x80, 0x00, 0x1f, 0x00, 0x00, 0x01, 0x98, 0x00, 0x3e, 0x00, 0x00, 0x01, 0x80, 0x00, 0x7e, 0x00,
+      0x00, 0x01, 0x83, 0xe1, 0xf8, 0x00, 0x00, 0x01, 0x83, 0xe1, 0xf8, 0x00, 0x00, 0x01, 0x3f, 0xfd,
+      0xd8, 0x00, 0x00, 0x07, 0xff, 0xfe, 0x10, 0x00, 0x00, 0x1f, 0xe7, 0xff, 0x90, 0x00, 0x00, 0x7f,
+      0xe7, 0xff, 0x80, 0x00, 0x01, 0xff, 0xdf, 0xff, 0xf0, 0x00, 0x03, 0xff, 0xdf, 0xff, 0xff, 0x00,
+      0x03, 0xff, 0xdf, 0xff, 0xff, 0x80, 0x07, 0xc7, 0xff, 0xff, 0xff, 0xc0, 0x07, 0xc7, 0xff, 0xff,
+      0xff, 0xc0, 0x07, 0xe7, 0xff, 0xff, 0xff, 0xc0, 0x0f, 0xcf, 0xfd, 0x1f, 0xff, 0xc0, 0x0f, 0xff,
+      0xfe, 0x0f, 0xff, 0xe0, 0x0f, 0xff, 0xfa, 0x1f, 0xff, 0xe0, 0x1f, 0xff, 0xfe, 0x7f, 0xff, 0xe0,
+      0x1f, 0xdf, 0xff, 0xff, 0xff, 0xe0, 0x1e, 0x07, 0xff, 0xff, 0xff, 0xe0, 0x1e, 0x01, 0xff, 0xff,
+      0xff, 0xe0, 0x1e, 0x01, 0xff, 0xff, 0xff, 0xe0, 0x1e, 0x01, 0xff, 0xff, 0xff, 0xe0, 0x1e, 0x0f,
+      0xff, 0xff, 0xff, 0xe0, 0x1f, 0xff, 0xff, 0xff, 0xff, 0xe0, 0x1f, 0xff, 0xff, 0xff, 0xff, 0xe0,
+      0x0f, 0x9f, 0xff, 0xff, 0xff, 0xe0, 0x0e, 0x07, 0xff, 0xff, 0xff, 0xe0, 0x0f, 0xc0, 0x1f, 0xff,
+      0xff, 0xc0, 0x0f, 0xc0, 0x1f, 0xff, 0xff, 0xc0, 0x07, 0xff, 0xff, 0xff, 0xff, 0xc0, 0x07, 0xff,
+      0xff, 0xff, 0xff, 0x80, 0x03, 0xff, 0xff, 0xff, 0xff, 0x80, 0x01, 0xff, 0xff, 0xff, 0xff, 0x00,
+      0x01, 0xff, 0xff, 0xff, 0xfe, 0x00, 0x00, 0x7f, 0xff, 0xff, 0xf8, 0x00, 0x00, 0x1f, 0xff, 0xff,
+      0xf0, 0x00, 0x00, 0x0f, 0xff, 0xff, 0xe0, 0x00, 0x00, 0x0f, 0xff, 0xff, 0xe0, 0x00, 0x00, 0x01,
+      0xff, 0xff, 0x80, 0x00, 0x00, 0x00, 0x3f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    }
+  }
+};
+
+// Hangi coin'in gösterileceğini tutacağımız değişken
+int currentAsset = 0; //dizinin kaçıncı elemanı
+// Dizide kaç tane eleman olduğu bilgisini tutacak değişken
+const int maxAssets = sizeof(assets) / sizeof(assets[0]);
+
+void setup() {
+
+  Serial.begin(115200);
+
+  // Wifi'ye bağlanırken gereken zaman için bekletiyoruz
+  for (uint8_t t = SETUP_TIME; t > 0; t--) {
+    // Bağlanma durumunu serial'a yazdıralım
+    Serial.printf("[SETUP] Bekleyin %d...\n", t);
+    Serial.flush();
+    delay(1000);
+  }
+
+  // Ağa bağlanalım
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+}
+
+void loop() {
+  // Ağa bağlanılana kadar bekliyoruz
+  if ((WiFi.status() == WL_CONNECTED)) {
+
+    // fingerprinti ayarlıyoruz
+    uint8_t fingerprint[20];
+    // C dilinde bir dizi diğer diziye memcopy ile atanabilir.
+    memcpy(fingerprint, fingerprint_crypto, 20);
+
+    // Bir Https istemcisi başlatalım //bu kısım olmadan SSL sertifikalı sitelerden veri çekemeyiz.
+    std::unique_ptr<BearSSL::WiFiClientSecure>client(new BearSSL::WiFiClientSecure);
+    client->setFingerprint(fingerprint);
+    HTTPClient https;
+
+    // API'ya bağlantı kuralım
+    Serial.print("HTTPS başlatılıyor...\n");
+    if (https.begin(*client, assets[currentAsset].url)) {  // HTTPS
+
+      // Bağlantıyı başlatalım ve GET header'ını gönderelim.
+      Serial.print("HTTPS GET...\n");
+      int httpCode = https.GET();
+
+      // bir hata olmuşsa httpCode değeri negatif dönecektir.
+      if (httpCode > 0) {
+        // Sunucudan gelen cevabı işlemeliyiz.
+        Serial.printf("HTTPS GET... code: %d\n", httpCode);
+
+        // HTTP iletişi geçerli ise gelen veriyi alıp işleyelim
+        if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
+          // API'den aldığımız veri bloğunu bir String'e atıyoruz.
+          String payload = https.getString();
+          // Coin'in değerini, değer değişimini alıyor ve bunlardan da %değişimi hesaplıyoruz
+          float satis;
+          float degisim;
+          
+
+          Serial.println("Güncel veriler alındı");
+          const size_t capacity = JSON_OBJECT_SIZE(4) + JSON_OBJECT_SIZE(5) + 150;
+          DynamicJsonBuffer jsonBuffer(capacity);
+          JsonObject& root = jsonBuffer.parseObject(payload);
+
+          if (!root.success()) {
+            Serial.println(F("Parsing başarısız!"));
+            return;
+          }
+
+          Serial.println(F("Cevap:"));
+          Serial.println(root["GA"]["satis"].as<char*>());
+          satis = root["GA"]["satis"]; 
+          degisim = root["GA"]["degisim"];
+          
+          float changePercent = degisim / satis * 100;
+
+          // Aldığımız veri bloğunu serial ekrana yazdıralım (kontrol için)
+          Serial.println(assets[currentAsset].assetName);
+          Serial.println(payload);
+
+
+          // Bilgileri OLED ekrana yazdıralım
+          currentAsset++;//sayacı bir arttırdık
+          if (currentAsset >= maxAssets) { //sona geldiysek başa çevirdik
+            currentAsset = 0;
+          }
+        }
+      }
+      else { //negatif bir cevap kodu dönmüşse
+        // Serial ekran ve OLED ekran kullanılarak hata bildirimi yapıyoruz.
+        Serial.printf("[HTTPS] GET... failed, error: %s\n", https.errorToString(httpCode).c_str());
+      }
+
+      // https bağlantısını işimiz bitince sonlandırmalıyız.
+      https.end();
+    }
+    else {
+      // API ile bağlantı sağlanamamışsa
+      Serial.println("API'ya bağlanılamıyor");
+      
+    }
+  }
+
+  Serial.print("Bir sonraki döngü için bekleyin...\n\n");
+  delay(UPDATE_TIME * 1000);
+}
